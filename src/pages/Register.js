@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { User, Mail, Lock, UserPlus, CheckCircle, Loader2, ChevronRight, ShieldCheck } from 'lucide-react';
+import { User, Mail, Lock, UserPlus, CheckCircle, Loader2, ChevronRight, ShieldCheck, AlertCircle } from 'lucide-react';
+import { AuthContext } from '../context/AuthContext';
 
 const Register = () => {
     const navigate = useNavigate();
+    const { register } = useContext(AuthContext);
     const [formData, setFormData] = useState({
         fullName: '',
         email: '',
@@ -11,22 +13,27 @@ const Register = () => {
     });
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
+    const [error, setError] = useState('');
 
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
+        if (error) setError('');
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
+        setError('');
 
-        // Simulate API call
-        setTimeout(() => {
-            console.log('Registration successful:', formData);
+        try {
+            await register(formData.fullName, formData.email, formData.password);
             setSuccess(true);
+            setTimeout(() => navigate('/events'), 2000);
+        } catch (err) {
+            setError(err.response?.data?.msg || 'Registration failed. Please try again.');
+        } finally {
             setLoading(false);
-            setTimeout(() => navigate('/login'), 2000);
-        }, 1500);
+        }
     };
 
     if (success) {
@@ -50,6 +57,12 @@ const Register = () => {
                 <div className="auth-card">
                     <h1 style={{ marginBottom: '0.5rem' }}>Create Account</h1>
                     <p style={{ color: 'var(--text-muted)', marginBottom: '2.5rem' }}>Start hosting world-class events today.</p>
+
+                    {error && (
+                        <div style={{ padding: '1rem', background: '#fef2f2', color: '#991b1b', borderRadius: '8px', marginBottom: '1.5rem', display: 'flex', gap: '10px', alignItems: 'center', fontSize: '0.9rem', border: '1px solid #fee2e2' }}>
+                            <AlertCircle size={18} /> {error}
+                        </div>
+                    )}
 
                     <form onSubmit={handleSubmit}>
                         <div style={{ marginBottom: '1.25rem' }}>

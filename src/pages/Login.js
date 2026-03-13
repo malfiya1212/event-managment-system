@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, LogIn, ChevronRight, AlertCircle, Loader2 } from 'lucide-react';
+import { AuthContext } from '../context/AuthContext';
 
 const Login = () => {
     const navigate = useNavigate();
+    const { login } = useContext(AuthContext);
     const [formData, setFormData] = useState({
         email: '',
         password: ''
@@ -21,16 +23,14 @@ const Login = () => {
         setLoading(true);
         setError('');
 
-        // Simulate API call
-        setTimeout(() => {
-            if (formData.email === 'test@example.com' && formData.password === 'password') {
-                console.log('Login successful');
-                navigate('/events');
-            } else {
-                setError('Invalid credentials. Please try again or use test@example.com / password.');
-            }
+        try {
+            await login(formData.email, formData.password);
+            navigate('/events');
+        } catch (err) {
+            setError(err.response?.data?.msg || 'Login failed. Please check your credentials.');
+        } finally {
             setLoading(false);
-        }, 1500);
+        }
     };
 
     return (

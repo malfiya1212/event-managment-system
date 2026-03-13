@@ -9,10 +9,12 @@
     "@testing-library/user-event": "^13.5.0",
     "axios": "^1.13.6",
     "lucide-react": "^0.577.0",
+    "mysql2": "^3.19.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-router-dom": "^7.13.1",
     "react-scripts": "5.0.1",
+    "sequelize": "^6.37.8",
     "web-vitals": "^2.1.4"
   },
   "scripts": {
