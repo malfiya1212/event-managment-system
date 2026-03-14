@@ -12,6 +12,7 @@ const Register = lazy(() => import('./pages/Register'));
 const Events = lazy(() => import('./pages/Events'));
 const MyTickets = lazy(() => import('./pages/MyTickets'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const AdminLogin = lazy(() => import('./pages/AdminLogin'));
 
 function App() {
   return (
@@ -26,6 +27,7 @@ function App() {
                 <Route path="/events" element={<Events />} />
                 <Route path="/my-tickets" element={<MyTickets />} />
                 <Route path="/admin" element={<AdminDashboard />} />
+                <Route path="/admin/login" element={<AdminLogin />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
               </Routes>

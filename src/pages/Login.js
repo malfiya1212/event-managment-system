@@ -110,6 +110,11 @@ const Login = () => {
                             Join EventMaster <ChevronRight size={16} />
                         </Link>
                     </p>
+                    <div style={{ marginTop: '2rem', textAlign: 'center', borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
+                        <Link to="/admin/login" style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textDecoration: 'none', fontWeight: '600', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                            <Lock size={14} /> Administrator Portal
+                        </Link>
+                    </div>
                 </div>
             </div>
 
