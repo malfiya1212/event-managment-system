@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useCallback, useRef } from 'react';
 import axios from 'axios';
-import { Plus, Calendar, MapPin, Trash2, Edit3, Loader2, Users, X, Check, Search, Filter } from 'lucide-react';
+import { Plus, Calendar, MapPin, Trash2, Edit3, Loader2, Users, X, Check, Search, Filter, ShieldCheck, CheckCircle, Camera, RefreshCw } from 'lucide-react';
 import { AuthContext } from '../context/AuthContext';
 import { Navigate } from 'react-router-dom';
+import { Html5QrcodeScanner } from 'html5-qrcode';
 
 const AdminDashboard = () => {
     const { user, loading: authLoading } = useContext(AuthContext);
@@ -21,17 +22,24 @@ const AdminDashboard = () => {
         category: 'Technology', price: '', totalCapacity: '', image: ''
     });
 
-    useEffect(() => { fetchEvents(); }, []);
+    const [activeTab, setActiveTab ] = useState('events'); // 'events' or 'gate'
+    const [checkInId, setCheckInId] = useState('');
+    const [checkInStatus, setCheckInStatus] = useState(null);
+    const [isScanning, setIsScanning] = useState(false);
+    
+    // Stable ref for checkInId to avoid re-rendering scanner while typing
+    const checkInIdRef = useRef(checkInId);
+    useEffect(() => { checkInIdRef.current = checkInId; }, [checkInId]);
 
-    const fetchEvents = async () => {
+    const fetchEvents = useCallback(async () => {
         try {
             const res = await axios.get('http://localhost:5000/api/events');
             setEvents(res.data);
         } catch (err) { console.error('Error fetching events:', err); }
         finally { setLoading(false); }
-    };
+    }, []);
 
-    const fetchAttendees = async (eventId, eventTitle) => {
+    const fetchAttendees = useCallback(async (eventId, eventTitle) => {
         try {
             const token = localStorage.getItem('token');
             const res = await axios.get(`http://localhost:5000/api/tickets/event/${eventId}`, {
@@ -43,7 +51,65 @@ const AdminDashboard = () => {
         } catch (err) {
             alert('Error fetching attendees');
         }
-    };
+    }, []);
+
+    const handleCheckIn = useCallback(async (e, scannedId = null) => {
+        if(e) e.preventDefault();
+        const idToUse = scannedId || checkInIdRef.current;
+        if(!idToUse) return;
+
+        setCheckInStatus(null);
+        try {
+            const token = localStorage.getItem('token');
+            const res = await axios.put(`http://localhost:5000/api/tickets/check-in/${idToUse}`, {}, {
+                headers: { 'x-auth-token': token }
+            });
+            setCheckInStatus({ success: true, msg: res.data.msg });
+            setCheckInId('');
+        } catch (err) {
+            setCheckInStatus({ success: false, msg: err.response?.data?.msg || 'Check-in failed' });
+        }
+    }, []);
+
+    const confirmCheckInInModal = useCallback(async (ticketId, eventId, eventTitle) => {
+        try {
+            const token = localStorage.getItem('token');
+            await axios.put(`http://localhost:5000/api/tickets/check-in/${ticketId}`, {}, {
+                headers: { 'x-auth-token': token }
+            });
+            fetchAttendees(eventId, eventTitle); // Refresh the list
+        } catch (err) {
+            alert(err.response?.data?.msg || 'Check-in failed');
+        }
+    }, [fetchAttendees]);
+
+    useEffect(() => {
+        let scanner = null;
+        if (isScanning && activeTab === 'gate') {
+            scanner = new Html5QrcodeScanner("reader", { 
+                fps: 10, 
+                qrbox: { width: 250, height: 250 },
+                aspectRatio: 1.0
+            });
+            scanner.render((decodedText) => {
+                handleCheckIn(null, decodedText);
+                scanner.clear();
+                setIsScanning(false);
+            }, (error) => {
+                // Ignore errors
+            });
+        }
+        return () => {
+            if (scanner) {
+                scanner.clear().catch(err => console.error("Failed to clear scanner", err));
+            }
+        };
+    }, [isScanning, activeTab, handleCheckIn]);
+
+    useEffect(() => { fetchEvents(); }, [fetchEvents]);
+    
+
+
 
     const handleDelete = async (id) => {
         if (!window.confirm('Are you sure you want to delete this event? This will also affect associated tickets.')) return;
@@ -104,6 +170,8 @@ const AdminDashboard = () => {
         e.location.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
+
+
     if (authLoading) return null;
 
     if (user?.role !== 'admin') {
@@ -129,25 +197,36 @@ const AdminDashboard = () => {
                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: 'rgba(37, 99, 235, 0.1)', color: 'var(--primary)', padding: '8px 16px', borderRadius: '100px', fontSize: '0.85rem', fontWeight: '800', marginBottom: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                         <Check size={14} /> System Operational
                     </div>
-                    <h1 style={{ fontSize: '3.5rem', fontWeight: '800', lineHeight: 1, marginBottom: '1rem' }}>Admin Dashboard</h1>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '1.2rem', maxWidth: '600px' }}>Orchestrate your global events, track attendee engagement, and manage system resources from a single interface.</p>
+                    <h1 style={{ fontSize: '3.5rem', fontWeight: '800', lineHeight: 1, marginBottom: '1rem' }}>Command Center</h1>
                 </div>
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                    <div style={{ position: 'relative' }}>
-                        <Search size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                        <input 
-                            type="text" 
-                            placeholder="Search events..." 
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            style={{ padding: '1rem 1rem 1rem 3rem', borderRadius: '14px', border: '1px solid var(--border)', background: 'white', width: '300px', fontWeight: '500' }} 
-                        />
+
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', background: 'white', padding: '0.5rem', borderRadius: '16px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}>
+                        <button 
+                            onClick={() => setActiveTab('events')} 
+                            style={{ padding: '0.75rem 1.5rem', borderRadius: '12px', border: 'none', background: activeTab === 'events' ? 'var(--primary)' : 'transparent', color: activeTab === 'events' ? 'white' : 'var(--text-muted)', fontWeight: '700', cursor: 'pointer', transition: 'all 0.2s' }}
+                        >
+                            Orchestrator
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('gate')} 
+                            style={{ padding: '0.75rem 1.5rem', borderRadius: '12px', border: 'none', background: activeTab === 'gate' ? '#10b981' : 'transparent', color: activeTab === 'gate' ? 'white' : 'var(--text-muted)', fontWeight: '700', cursor: 'pointer', transition: 'all 0.2s' }}
+                        >
+                            Gate Terminal
+                        </button>
                     </div>
-                    <button onClick={() => setShowModal(true)} className="btn-primary" style={{ width: 'auto', padding: '1rem 2rem', display: 'flex', gap: '10px', alignItems: 'center', height: 'fit-content' }}>
-                        <Plus size={20} /> Create New Event
-                    </button>
+                    {activeTab === 'events' ? (
+                        <button onClick={() => setShowModal(true)} className="btn-primary" style={{ width: 'auto', padding: '1rem 2.5rem', display: 'flex', gap: '10px', alignItems: 'center', height: 'fit-content' }}>
+                            <Plus size={20} /> New Deployment
+                        </button>
+                    ) : (
+                        <button onClick={() => setCheckInStatus(null)} style={{ background: '#f1f5f9', border: 'none', padding: '1rem 2rem', borderRadius: '14px', fontWeight: '700', cursor: 'pointer' }}>Clear Logger</button>
+                    )}
                 </div>
             </div>
+
+            {activeTab === 'events' ? (
+                <>
 
             {/* Stats Overview (Optional extra flair) */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '2rem', marginBottom: '4rem' }}>
@@ -172,8 +251,20 @@ const AdminDashboard = () => {
             <div style={{ background: 'white', borderRadius: '32px', border: '1px solid var(--border)', overflow: 'hidden', boxShadow: 'var(--shadow-lg)' }}>
                 <div style={{ padding: '1.5rem 2rem', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
                     <h3 style={{ margin: 0, fontWeight: '800' }}>Active Event Registry</h3>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: '600' }}>
-                        <Filter size={14} /> Showing {filteredEvents.length} Events
+                    <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
+                        <div style={{ position: 'relative', width: '250px' }}>
+                            <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                            <input 
+                                type="text" 
+                                placeholder="Filter registry..." 
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                style={{ padding: '0.6rem 1rem 0.6rem 2.5rem', borderRadius: '10px', border: '1px solid var(--border)', background: 'white', width: '100%', fontSize: '0.9rem' }} 
+                            />
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: '600' }}>
+                            <Filter size={14} /> Showing {filteredEvents.length} Events
+                        </div>
                     </div>
                 </div>
                 <div style={{ overflowX: 'auto' }}>
@@ -182,8 +273,8 @@ const AdminDashboard = () => {
                             <tr>
                                 <th style={{ padding: '1.5rem 2rem', color: 'var(--text-muted)', fontWeight: '700', fontSize: '0.85rem', textTransform: 'uppercase' }}>Event Details</th>
                                 <th style={{ padding: '1.5rem 2rem', color: 'var(--text-muted)', fontWeight: '700', fontSize: '0.85rem', textTransform: 'uppercase' }}>Logistics</th>
-                                <th style={{ padding: '1.5rem 2rem', color: 'var(--text-muted)', fontWeight: '700', fontSize: '0.85rem', textTransform: 'uppercase' }}>Occupancy</th>
-                                <th style={{ padding: '1.5rem 2rem', color: 'var(--text-muted)', fontWeight: '700', fontSize: '0.85rem', textTransform: 'uppercase', textAlign: 'right' }}>Actions</th>
+                            <th style={{ padding: '1.5rem 2rem', color: 'var(--text-muted)', fontWeight: '700', fontSize: '0.85rem', textTransform: 'uppercase' }}>Occupancy</th>
+                                <th style={{ padding: '1.5rem 2rem', color: 'var(--text-muted)', fontWeight: '700', fontSize: '0.85rem', textTransform: 'uppercase', textAlign: 'right' }}>Security Port</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -233,6 +324,71 @@ const AdminDashboard = () => {
                     </table>
                 </div>
             </div>
+            </>
+            ) : (
+                <div style={{ maxWidth: '800px', margin: '4rem auto', background: 'white', borderRadius: '40px', border: '1px solid var(--border)', padding: '5rem 4rem', textAlign: 'center', boxShadow: '0 30px 60px -12px rgba(0,0,0,0.1)' }}>
+                    <div style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', width: '100px', height: '100px', borderRadius: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 2.5rem', transform: 'rotate(-5deg)' }}>
+                        <Users size={50} />
+                    </div>
+                    <h2 style={{ fontSize: '3rem', fontWeight: '800', marginBottom: '1rem', letterSpacing: '-0.04em' }}>Gate Security Terminal</h2>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '1.2rem', marginBottom: '3rem', maxWidth: '480px', margin: '0 auto 3rem' }}>Verify digital passports in real-time. Scan or enter the unique identifier for immediate access clearance.</p>
+
+                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2.5rem', gap: '1rem' }}>
+                        <button 
+                            onClick={() => setIsScanning(!isScanning)} 
+                            style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '1.2rem 2.5rem', borderRadius: '20px', border: 'none', background: isScanning ? '#ef4444' : '#10b981', color: 'white', fontWeight: '800', cursor: 'pointer', boxShadow: isScanning ? 'none' : '0 10px 25px -5px rgba(16, 185, 129, 0.4)' }}
+                        >
+                            {isScanning ? <X size={20} /> : <Camera size={20} />}
+                            {isScanning ? 'Deactivate Camera' : 'Launch Mobile Scanner'}
+                        </button>
+                    </div>
+
+                    {isScanning && (
+                        <div style={{ marginBottom: '3rem' }}>
+                            <div id="reader" style={{ width: '100%', maxWidth: '450px', margin: '0 auto', borderRadius: '32px', overflow: 'hidden', border: '5px solid #10b981', boxShadow: '0 20px 50px -10px rgba(0,0,0,0.2)' }}></div>
+                            <p style={{ marginTop: '1.5rem', fontWeight: '700', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                                <RefreshCw size={18} className="animate-spin" /> Scanner Active: Align QR Code
+                            </p>
+                        </div>
+                    )}
+
+                    <form onSubmit={handleCheckIn} style={{ display: 'flex', gap: '1.25rem', maxWidth: '550px', margin: '0 auto' }}>
+                        <div style={{ flex: 1, position: 'relative' }}>
+                            <ShieldCheck size={24} style={{ position: 'absolute', left: '20px', top: '50%', transform: 'translateY(-50%)', color: '#10b981' }} />
+                            <input 
+                                type="text" 
+                                placeholder="TKT-ID-XXXXX" 
+                                style={{ width: '100%', padding: '1.5rem 1.5rem 1.5rem 4.5rem', borderRadius: '24px', background: '#f8fafc', fontSize: '1.6rem', fontWeight: '900', border: '2px solid #e2e8f0', letterSpacing: '0.05em', height: '80px' }}
+                                value={checkInId}
+                                onChange={(e) => setCheckInId(e.target.value)}
+                            />
+                        </div>
+                        <button type="submit" className="btn-primary" style={{ width: '150px', borderRadius: '24px', fontSize: '1.1rem', height: '80px' }}>
+                            CLEAR
+                        </button>
+                    </form>
+
+                    {checkInStatus && (
+                        <div style={{ 
+                            marginTop: '3.5rem', 
+                            padding: '2.5rem', 
+                            borderRadius: '32px', 
+                            background: checkInStatus.success ? '#ecfdf5' : '#fef2f2',
+                            border: `2px solid ${checkInStatus.success ? '#10b981' : '#ef4444'}`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '20px',
+                            color: checkInStatus.success ? '#065f46' : '#991b1b',
+                            fontWeight: '800',
+                            fontSize: '1.4rem'
+                        }}>
+                            {checkInStatus.success ? <CheckCircle size={32} /> : <X size={32} />}
+                            {checkInStatus.msg}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Create/Edit Modal */}
             {showModal && (
@@ -308,22 +464,58 @@ const AdminDashboard = () => {
                                 <p style={{ fontSize: '1.2rem', fontWeight: '600' }}>No registrations found for this event yet.</p>
                             </div>
                         ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                                {selectedAttendees.map((ticket, idx) => (
-                                    <div key={ticket.id} style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', padding: '1.5rem', background: '#f8fafc', borderRadius: '24px', border: '1px solid var(--border)' }}>
-                                        <div style={{ background: 'var(--primary)', color: 'white', width: '50px', height: '50px', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800', fontSize: '1.2rem' }}>
-                                            {ticket.User.name.charAt(0)}
-                                        </div>
-                                        <div>
-                                            <div style={{ fontWeight: '800', fontSize: '1.1rem' }}>{ticket.User.name}</div>
-                                            <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>{ticket.User.email}</div>
-                                        </div>
-                                        <div style={{ marginLeft: 'auto', background: '#ecfdf5', color: '#059669', fontSize: '0.75rem', fontWeight: '800', padding: '4px 12px', borderRadius: '100px', textTransform: 'uppercase' }}>
-                                            {ticket.status}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border)' }}>
+                                        <th style={{ padding: '1rem', color: 'var(--text-muted)', fontSize: '0.8rem' }}>MANIFEST INFO</th>
+                                        <th style={{ padding: '1rem', color: 'var(--text-muted)', fontSize: '0.8rem' }}>STATUS</th>
+                                        <th style={{ padding: '1rem', textAlign: 'right', color: 'var(--text-muted)', fontSize: '0.8rem' }}>ACTIONS</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {selectedAttendees.map((ticket) => (
+                                        <tr key={ticket.id} style={{ borderBottom: '1px solid #f8fafc' }}>
+                                            <td style={{ padding: '1.5rem 1rem' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                                    <div style={{ background: 'var(--primary)', color: 'white', width: '40px', height: '40px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800', fontSize: '1rem' }}>
+                                                        {ticket.User.name.charAt(0)}
+                                                    </div>
+                                                    <div>
+                                                        <div style={{ fontWeight: '800', fontSize: '1rem' }}>{ticket.User.name}</div>
+                                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{ticket.User.email}</div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td style={{ padding: '1.5rem 1rem' }}>
+                                                <div style={{ 
+                                                    background: ticket.status === 'used' ? '#ecfdf5' : '#f1f5f9', 
+                                                    color: ticket.status === 'used' ? '#059669' : 'var(--text-muted)', 
+                                                    fontSize: '0.7rem', 
+                                                    fontWeight: '800', 
+                                                    padding: '4px 12px', 
+                                                    borderRadius: '100px', 
+                                                    textTransform: 'uppercase',
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px'
+                                                }}>
+                                                    {ticket.status === 'used' ? <><CheckCircle size={10} /> Present</> : 'Expected'}
+                                                </div>
+                                            </td>
+                                            <td style={{ padding: '1.5rem 1rem', textAlign: 'right' }}>
+                                                {ticket.status !== 'used' && (
+                                                    <button 
+                                                        onClick={() => confirmCheckInInModal(ticket.id, ticket.EventId, selectedEventName)}
+                                                        style={{ background: '#10b981', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '12px', fontWeight: '800', cursor: 'pointer', fontSize: '0.8rem' }}
+                                                    >
+                                                        Clear Entry
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         )}
                     </div>
                 </div>

@@ -9,7 +9,10 @@ const MyTickets = () => {
     useEffect(() => {
         const fetchTickets = async () => {
             try {
-                const res = await axios.get('http://localhost:5000/api/tickets/my-tickets');
+                const token = localStorage.getItem('token');
+                const res = await axios.get('http://localhost:5000/api/tickets/my-tickets', {
+                    headers: { 'x-auth-token': token }
+                });
                 setTickets(res.data);
             } catch (err) {
                 console.error('Error fetching tickets:', err);
@@ -22,11 +25,20 @@ const MyTickets = () => {
 
     if (loading) {
         return (
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
-                <Loader2 className="animate-spin" size={48} color="var(--primary)" />
+            <div style={{ 
+                height: '60vh', 
+                display: 'flex', 
+                flexDirection: 'column',
+                alignItems: 'center', 
+                justifyContent: 'center',
+                gap: '2rem'
+            }}>
+                <Loader2 className="animate-spin" size={40} color="var(--primary)" />
+                <p style={{ color: 'var(--text-muted)', fontWeight: '600', letterSpacing: '0.05em' }}>Retrieving Your Digital Passports...</p>
             </div>
         );
     }
+
 
     return (
         <div className="container-full">

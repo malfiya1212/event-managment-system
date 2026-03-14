@@ -2,10 +2,12 @@ import React, { useState, useContext } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, LogIn, ChevronRight, AlertCircle, Loader2 } from 'lucide-react';
 import { AuthContext } from '../context/AuthContext';
+import { NotificationContext } from '../context/NotificationContext';
 
 const Login = () => {
     const navigate = useNavigate();
     const { login } = useContext(AuthContext);
+    const { success, error: notifyError } = useContext(NotificationContext);
     const [formData, setFormData] = useState({
         email: '',
         password: ''
@@ -24,14 +26,18 @@ const Login = () => {
         setError('');
 
         try {
-            await login(formData.email, formData.password);
+            const res = await login(formData.email, formData.password);
+            success(`Welcome back, ${res.user.name}!`);
             navigate('/events');
         } catch (err) {
-            setError(err.response?.data?.msg || 'Login failed. Please check your credentials.');
+            const msg = err.response?.data?.msg || 'Login failed. Please check your credentials.';
+            setError(msg);
+            notifyError(msg);
         } finally {
             setLoading(false);
         }
     };
+
 
     return (
         <div className="auth-wrapper">
